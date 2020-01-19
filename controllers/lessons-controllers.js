@@ -1,6 +1,7 @@
 const uuid = require ('uuid/v4');
 const {validationResult} = require ('express-validator');
 const HttpError = require ('../models/http-error');
+const Lesson = require ('../models/lesson');
 
 let DUMMY_LESSONS = [
   {
@@ -11,32 +12,50 @@ let DUMMY_LESSONS = [
   },
 ];
 
-const getLessonById = (req, res, next) => {
+const getLessonById = async (req, res, next) => {
   const lessonId = req.params.lid; //{pid: 'p1'}
-  const lesson = DUMMY_LESSONS.find (l => {
-    return l.id === lessonId;
-  });
+  let lesson;
+
+  try {
+    lesson = await Lesson.findById (lessonId);
+  } catch (err) {
+    const error = new HttpError (
+      'Something went wrong. Could not find lesson.',
+      500
+    );
+    return next (error);
+  }
 
   if (!lesson) {
     // const error = new Error ('Could not find a lesson for the provided id.');
     // error.code = 404;
     // throw error;
-
-    throw new HttpError ('Could not find lesson for the provided id.');
+    const error = new HttpError (
+      'Could not find lesson for the provided id.',
+      404
+    );
+    return next (error);
   }
 
-  res.json ({lesson}); // {lesson: lesson}
+  res.json ({lesson: lesson.toObject ({getters: true})}); //getters???
 };
 
 //function getLessonById() {...}
 //const getLessonById = function() {...}
 
-const getLessonsByUserId = (req, res, next) => {
+const getLessonsByUserId = async (req, res, next) => {
   const userId = req.params.uid;
 
-  const lessons = DUMMY_LESSONS.filter (l => {
-    return l.creator === userId;
-  });
+  let lessons;
+  try {
+    lessons = await Lesson.find ({creator: userId});
+  } catch (err) {
+    const error = new HttpError (
+      'Fetching lessons failed, please try again later',
+      500
+    );
+    return next (error);
+  }
 
   if (!lessons || lessons.length === 0) {
     // const error = new Error (
@@ -50,10 +69,14 @@ const getLessonsByUserId = (req, res, next) => {
     );
   }
 
-  res.json ({lessons});
+  res.json ({
+    lessons: lessons.map (lesson => lesson.toObject ({getters: true})),
+  });
 };
 
-const createLesson = (req, res, next) => {
+//cannot use .find with array, use map instead to get ride of _
+
+const createLesson = async (req, res, next) => {
   const errors = validationResult (req);
   if (!errors.isEmpty ()) {
     console.log (errors);
@@ -61,19 +84,26 @@ const createLesson = (req, res, next) => {
   }
   const {title, description, creator} = req.body;
   //const title = req.body.title
-  const createdLesson = {
-    id: uuid (),
+  const createdLesson = new Lesson ({
     title,
     description,
     creator,
-  };
+  });
 
-  DUMMY_LESSONS.push (createdLesson);
+  try {
+    await createdLesson.save ();
+  } catch (err) {
+    const error = new HttpError (
+      'Creating lesson failed, please try again.',
+      500
+    );
+    return next (error);
+  }
 
   res.status (201).json ({lesson: createdLesson});
 };
 
-const updateLesson = (req, res, next) => {
+const updateLesson = async (req, res, next) => {
   const errors = validationResult (req);
   if (!errors.isEmpty ()) {
     console.log (errors);
@@ -83,22 +113,61 @@ const updateLesson = (req, res, next) => {
   const {title, description} = req.body;
   const lessonId = req.params.lid;
 
-  const updatedLesson = {...DUMMY_LESSONS.find (l => l.id === lessonId)};
-  const lessonIndex = DUMMY_LESSONS.findIndex (l => l.id === lessonId);
-  updatedLesson.title = title;
-  updatedLesson.description = description;
+  let lesson;
 
-  DUMMY_LESSONS[lessonIndex] = updatedLesson;
+  try {
+    lesson = await Lesson.findById (lessonId);
+  } catch (err) {
+    const error = new HttpError (
+      'Something went wrong, could not find lesson.',
+      500
+    );
+    return next (error);
+  }
 
-  res.status (200).json ({lesson: updatedLesson});
+  // const updatedLesson = {...DUMMY_LESSONS.find (l => l.id === lessonId)};
+  // const lessonIndex = DUMMY_LESSONS.findIndex (l => l.id === lessonId);
+  lesson.title = title;
+  lesson.description = description;
+
+  try {
+    await lesson.save ();
+  } catch (err) {
+    const error = new HttpError (
+      'Something went wrong, could not update lesson'
+    );
+    return next (error);
+  }
+
+  // DUMMY_LESSONS[lessonIndex] = updatedLesson;
+
+  res.status (200).json ({lesson: lesson.toObject ({getters: true})});
 };
 
-const deleteLesson = (req, res, next) => {
+const deleteLesson = async (req, res, next) => {
   const lessonId = req.params.lid;
-  if (DUMMY_LESSONS.find (l => l.id === lessonId)) {
-    throw new HttpError ('Could not find a lesson with that id', 404);
+
+  let lesson;
+  try {
+    lesson = await Lesson.findById (lessonId);
+  } catch (err) {
+    const error = new HttpError (
+      'Something went wrong. Could not delete lesson.',
+      500
+    );
+    return next (error);
   }
-  DUMMY_LESSONS = DUMMY_LESSONS.filter (l => l.id !== lessonId);
+
+  try {
+    await lesson.remove ();
+  } catch (err) {
+    const error = new HttpError (
+      'Something went wrong. Could not delete lesson.',
+      500
+    );
+    return next (error);
+  }
+
   res.status (200).json ({message: 'Deleted lesson.'});
 };
 
