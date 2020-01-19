@@ -1,16 +1,10 @@
 const uuid = require ('uuid/v4');
 const {validationResult} = require ('express-validator');
+const mongoose = require ('mongoose');
 const HttpError = require ('../models/http-error');
 const Lesson = require ('../models/lesson');
+const User = require ('../models/user');
 
-let DUMMY_LESSONS = [
-  {
-    id: 'l1',
-    title: 'Blue 1',
-    description: 'BLAH',
-    creator: 'TG',
-  },
-];
 
 const getLessonById = async (req, res, next) => {
   const lessonId = req.params.lid; //{pid: 'p1'}
@@ -90,8 +84,39 @@ const createLesson = async (req, res, next) => {
     creator,
   });
 
+  let user;
+
   try {
-    await createdLesson.save ();
+    user = await User.findById (creator);
+  } catch (err) {
+    const error = new HttpError (
+      'Creating lesson failed. Please try again.',
+      500
+    );
+    return next (error);
+  }
+
+  if (!user) {
+    const error = new HttpError ('Could not find user for provided id.', 404);
+    return next (error);
+  }
+
+  console.log (user);
+
+  try {
+    const sess = await mongoose.startSession ();
+    sess.startTransaction ();
+    await createdLesson.save ({session: sess});
+    user.lessons.push (createdLesson);
+    await user.save ({session: sess});
+    sess.commitTransaction ();
+    /**
+     * starts session, allows two async actions to happen:  
+     * confirm new lesson,
+     * update user with new lesson
+     * ^^ these two must be true and commited or else error is thrown
+     * session-transaction system allows revertion of data upon error
+     *  */
   } catch (err) {
     const error = new HttpError (
       'Creating lesson failed, please try again.',
@@ -106,8 +131,9 @@ const createLesson = async (req, res, next) => {
 const updateLesson = async (req, res, next) => {
   const errors = validationResult (req);
   if (!errors.isEmpty ()) {
-    console.log (errors);
-    throw new HttpError ('Invalid inputs passed. Please check your data.', 422);
+    return next (
+      new HttpError ('Invalid inputs passed. Please check your data.', 422)
+    );
   }
 
   const {title, description} = req.body;
@@ -149,7 +175,7 @@ const deleteLesson = async (req, res, next) => {
 
   let lesson;
   try {
-    lesson = await Lesson.findById (lessonId);
+    lesson = await Lesson.findById (lessonId).populate ('creator');
   } catch (err) {
     const error = new HttpError (
       'Something went wrong. Could not delete lesson.',
@@ -158,8 +184,18 @@ const deleteLesson = async (req, res, next) => {
     return next (error);
   }
 
+  if (!lesson) {
+    const error = new HttpError ('Could not find lesson for this id', 404);
+    return next (error);
+  }
+
   try {
-    await lesson.remove ();
+    const sess = await mongoose.startSession ();
+    sess.startTransaction ();
+    await lesson.remove ({session: sess});
+    lesson.creator.lessons.pull (lesson);
+    await lesson.creator.save ({session: sess});
+    await sess.commitTransaction ();
   } catch (err) {
     const error = new HttpError (
       'Something went wrong. Could not delete lesson.',
