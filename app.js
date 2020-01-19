@@ -9,6 +9,17 @@ const app = express ();
 
 app.use (bodyParser.json ());
 
+app.use ((req, res, next) => {
+  res.setHeader ('Access-Control-Allow-Origin', '*');
+  res.setHeader (
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  );
+  res.setHeader ('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE');
+
+  next ();
+});
+
 app.use ('/api/lessons', lessonsRoutes); //api/lessons
 
 app.use ('/api/users', usersRoutes);
@@ -28,7 +39,7 @@ app.use ((error, req, res, next) => {
 
 mongoose
   .connect (
-    'mongodb+srv://TiVo:Raizcheat12@clustertd-68oag.mongodb.net/lessons?retryWrites=true&w=majority'
+    'mongodb+srv://TiVo:Raizcheat12@clustertd-68oag.mongodb.net/mern?retryWrites=true&w=majority'
   )
   .then (() => {
     app.listen (5000);
