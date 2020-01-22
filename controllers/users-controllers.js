@@ -50,7 +50,7 @@ const signup = async (req, res, next) => {
     email,
     image: 'https://res.cloudinary.com/ddj5orpun/image/upload/v1569892177/image2_nsafka.jpg',
     password,
-    lessons: []
+    lessons: [],
   });
 
   try {
@@ -82,7 +82,10 @@ const login = async (req, res, next) => {
     return next (error);
   }
 
-  res.json ({message: 'Logged in!'});
+  res.json ({
+    message: 'Logged in!',
+    user: existingUser.toObject ({getters: true}),
+  });
 };
 
 exports.getUsers = getUsers;
